@@ -165,7 +165,7 @@ const validateCSVFormat = async (process_id: string, folderPath: string, entry: 
     const code = _.get(error, 'code', 'UPLOAD_QUESTION_CRON');
     const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
     logger.error({ errorMsg, code });
-    await markProcessAsFailed(process_id, 'is failed', errorMsg);
+    await markProcessAsFailed(process_id, 'is_failed', errorMsg);
     return false;
   }
 };
