@@ -25,6 +25,13 @@ const appConfiguration: IConfiguration = {
   bucketName: get(envVars, 'BUCKET_NAME', ''),
   csvFileName: get(envVars, 'CSV_FILE_NAME', '').split(','),
   cronJobPrcessUpdate: get(envVars, 'CRON_JOB_PROCESS_UPDATE', '0 9,21 * * *'),
+  grid1AddFields: get(envVars, 'Grid-1_add_fields', '').split(','),
+  grid1SubFields: get(envVars, 'Grid-1_sub_fields', '').split(','),
+  grid1MultipleFields: get(envVars, 'Grid-1_multiple_fields', '').split(','),
+  grid1DivFields: get(envVars, 'Grid-1_div_fields', '').split(','),
+  grid2Fields: get(envVars, 'Grid-2_fields', '').split(','),
+  fibFields: get(envVars, 'fib_fields', '').split(','),
+  mcqFields: get(envVars, 'mcq_fields', '').split(','),
 };
 
 export default appConfiguration;

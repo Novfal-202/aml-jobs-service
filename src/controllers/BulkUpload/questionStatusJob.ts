@@ -6,8 +6,12 @@ import { getProcessByMetaData, updateProcess } from '../../services/process';
 import path from 'path';
 import AdmZip from 'adm-zip';
 import { appConfiguration } from '../../config';
+import { AppDataSource } from '../../config';
+import { Transaction } from 'sequelize';
+import { createStageTable, updateStageTable, getStageTableById, getStageTableByMetaData } from '../../services/stageTable';
 
-const { csvFileName, cronJobPrcessUpdate } = appConfiguration;
+const { csvFileName, cronJobPrcessUpdate, grid1AddFields, mcqFields, fibFields, grid2Fields } = appConfiguration;
+
 export const scheduleCronJob = () => {
   const checkStatus = new CronJob(cronJobPrcessUpdate, async () => {
     try {
@@ -22,7 +26,6 @@ export const scheduleCronJob = () => {
 
         const s3Objects = await getAllCloudFolder(folderPath);
 
-        // Check if the folder is empty
         if (isFolderEmpty(s3Objects)) {
           await markProcessAsFailed(process_id, 'is_empty', 'The uploaded zip folder is empty, please ensure a valid upload file.');
           continue;
@@ -44,12 +47,10 @@ export const scheduleCronJob = () => {
   checkStatus.start();
 };
 
-// Function to check if the folder is empty
 const isFolderEmpty = (s3Objects: any): boolean => {
   return !s3Objects.Contents || _.isEmpty(s3Objects.Contents);
 };
 
-// Function to validate the contents of ZIP files
 const validateZipFiles = async (process_id: string, s3Objects: any, folderPath: string, fileName: string, validFileNames: string[]): Promise<boolean> => {
   let isZipFile = true;
   try {
@@ -68,34 +69,46 @@ const validateZipFiles = async (process_id: string, s3Objects: any, folderPath: 
       if (!isZipFile) return false;
 
       const questionZipEntries = await fetchAndExtractZipEntries('upload', folderPath, fileName);
+      let mediaFolderExists = false;
+
       for (const entry of questionZipEntries) {
-        if (entry.isDirectory) {
-          await markProcessAsFailed(process_id, 'is_unsupported_folder_type', 'The uploaded ZIP folder contains files directly. Please ensure that all CSV files are inside the ZIP folder.');
+        if (entry.isDirectory && entry.entryName === 'media/') {
+          mediaFolderExists = true; // Found the media folder
+        }
+
+        if (entry.isDirectory && entry.entryName !== 'media/') {
+          await markProcessAsFailed(process_id, 'is_unsupported_folder_type', 'The uploaded ZIP folder contains unsupported directories. Ensure all files are placed in the appropriate location.');
           return false;
         }
+
         if (!validFileNames.includes(entry.entryName)) {
           await markProcessAsFailed(process_id, 'is_unsupported_file_name', `The uploaded file '${entry.entryName}' is not a valid file name.`);
           return false;
         }
 
         const validCSV = await validateCSVFormat(process_id, folderPath, entry, fileName);
-
         if (!validCSV) return false;
+      }
+
+      // Check if the media folder exists
+      if (!mediaFolderExists) {
+        await markProcessAsFailed(process_id, 'is_media_folder_missing', 'The uploaded ZIP file does not contain a "media" folder.');
+        return false;
       }
     }
 
     return true;
   } catch (error) {
     const code = _.get(error, 'code', 'UPLOAD_QUESTION_CRON');
-    const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
+    const errorMsg = error instanceof Error ? error.message : 'Error during upload validation, please re-upload the zip file for the new process.';
     logger.error({ errorMsg, code });
-    await markProcessAsFailed(process_id, 'is failed', errorMsg);
+    await markProcessAsFailed(process_id, 'is_failed', errorMsg);
     return false;
   }
 };
 
-// Function to validate the format of the CSV file inside the ZIP and insert into temp table
 const validateCSVFormat = async (process_id: string, folderPath: string, entry: any, fileName: string): Promise<boolean> => {
+  const transaction: Transaction = await AppDataSource.transaction();
   try {
     const templateZipEntries = await fetchAndExtractZipEntries('template', folderPath, fileName);
     const templateFileContent = templateZipEntries
@@ -111,10 +124,14 @@ const validateCSVFormat = async (process_id: string, folderPath: string, entry: 
     const [templateHeader] = templateFileContent.split('\n').map((row) => row.split(','));
 
     const questionFileContent = entry.getData().toString('utf8');
-    const [header, ...rows] = questionFileContent.split('\n').map((row: string) => row.split(','));
+    const [header, ...rows] = questionFileContent
+      .split('\n')
+      .map((row: string) => row.split(','))
+      .filter((row: string[]) => row.some((cell) => cell.trim() !== '')); // Filter out rows where all cells are empty
 
+    // Validate header length and column names
     if (header.length !== templateHeader.length) {
-      await markProcessAsFailed(process_id, 'invalid_header_length', `Uploaded csv contain maximum or minimum field compared to template.`);
+      await markProcessAsFailed(process_id, 'invalid_header_length', `CSV file contains more/less fields compared to the template.`);
       return false;
     }
     if (!templateHeader.every((col, i) => col === header[i])) {
@@ -122,20 +139,108 @@ const validateCSVFormat = async (process_id: string, folderPath: string, entry: 
       return false;
     }
 
+    // Insert all rows into the staging table
     for (const [rowIndex, row] of rows.entries()) {
-      if (row.length !== header.length) {
-        await markProcessAsFailed(process_id, 'invalid_row_length', `Row ${rowIndex + 1} does not match the expected number of columns.`);
+      const rowData = header.reduce(
+        (acc: any, key: any, index: number) => {
+          acc[key] = row[index];
+          return acc;
+        },
+        {} as Record<string, string>,
+      );
+
+      const { hint, description, QID: question_id, ...rest } = rowData;
+      const bodyFields = Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('n') || key.includes('grid') || key.includes('fib') || key.includes('mcq')));
+
+      Object.keys(bodyFields).forEach((key) => delete rowData[key]);
+
+      const insertData = {
+        ...rowData,
+        question_id,
+        process_id,
+        hint,
+        description,
+        body: { ...bodyFields },
+      };
+
+      const createStageData = await createStageTable(insertData);
+      if (createStageData.error) {
+        await markProcessAsFailed(process_id, 'insert_error', `Error inserting data for row ${rowIndex + 1}.`);
+        continue;
+      }
+
+      // After insertion, perform batch content validation
+      const validationError = await validateInsertedData(process_id, createStageData.dataValues.id);
+      if (validationError) {
+        await markProcessAsFailed(process_id, 'insert_error', `Error inserting data for row ${rowIndex + 1}.`);
+        await transaction.rollback();
         return false;
+      } else {
+        await updateProcess(process_id, {
+          status: 'is_completed',
+        });
+        await updateStageTable(
+          { process_id },
+          {
+            status: 'is_completed',
+          },
+        );
       }
     }
-
+    await transaction.commit();
+    // API call to bulk insert the data
     return true;
   } catch (error) {
-    const code = _.get(error, 'code', 'UPLOAD_QUESTION_CRON');
-    const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
-    logger.error({ errorMsg, code });
-    await markProcessAsFailed(process_id, 'is failed', errorMsg);
+    const errorMsg = error instanceof Error ? error.message : 'Error during validation. Please re-upload the file.';
+    logger.error({ errorMsg, process_id });
+    await markProcessAsFailed(process_id, 'failed', errorMsg);
+    await transaction.rollback();
     return false;
+  }
+};
+
+const validateInsertedData = async (process_id: string, id: number): Promise<boolean> => {
+  try {
+    const records = await getStageTableById(id);
+    const {
+      getStageTable: { question_id, question_set_id, question_type, L1_skill, body },
+    } = records;
+    const checkRecord = await getStageTableByMetaData({ question_id, question_set_id, L1_skill });
+
+    if (checkRecord.stageTable.length > 1) {
+      await markProcessAsFailed(process_id, 'duplicate_question_id', `Duplicate question_id and question_set_id combination found for question_id ${question_id}.`);
+      await updateStageTable({ id }, { status: 'errored', error_info: 'duplication fo question and question set id present' });
+    }
+
+    let requiredFields: string[];
+    const caseKey = question_type == 'Grid-1' ? `${question_type}_${L1_skill}` : question_type;
+
+    switch (caseKey) {
+      case `Grid-1_add`:
+        requiredFields = grid1AddFields;
+        break;
+      case `Grid-2`:
+        requiredFields = grid2Fields;
+        break;
+      case `mcq`:
+        requiredFields = mcqFields;
+        break;
+      case `fib`:
+        requiredFields = fibFields;
+        break;
+      default:
+        requiredFields = [];
+        break;
+    }
+    if (!requiredFields.every((fields) => body[fields])) {
+      await updateStageTable({ id }, { status: 'errored', error_info: `required field should not be a empty ,add valid data for ${requiredFields.flatMap((fields) => fields).join(',')} ` });
+      await markProcessAsFailed(process_id, 'invalid_data', `Dependent fields validation failed for question_id ${question_id}.`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    logger.error({ message: `Validation failed for process_id ${process_id}`, error });
+    return true;
   }
 };
 
