@@ -70,33 +70,32 @@ const validateZipFiles = async (process_id: string, s3Objects: any, folderPath: 
 
       const questionZipEntries = await fetchAndExtractZipEntries('upload', folderPath, fileName);
       let mediaFolderExists = false;
-
+      const mediaContent = questionZipEntries
+        .filter((mediaEntry: any) => !mediaEntry.isDirectory && mediaEntry.entryName.startsWith('media/')) // Only include files from the "media" folder
+        .map((mediaEntry: any) => mediaEntry.entryName.split('/').pop());
       for (const entry of questionZipEntries) {
         if (entry.isDirectory && entry.entryName === 'media/') {
-          mediaFolderExists = true; // Found the media folder
+          mediaFolderExists = true;
+          break;
         }
+      }
 
-        if (entry.isDirectory && entry.entryName !== 'media/') {
-          await markProcessAsFailed(process_id, 'is_unsupported_folder_type', 'The uploaded ZIP folder contains unsupported directories. Ensure all files are placed in the appropriate location.');
-          return false;
-        }
+      if (!mediaFolderExists) {
+        await markProcessAsFailed(process_id, 'is_media_folder_missing', 'The uploaded ZIP file does not contain a "media" folder.');
+        return false;
+      }
 
+      for (const entry of questionZipEntries) {
+        if (entry.isDirectory && entry.entryName === 'media/') continue;
         if (!validFileNames.includes(entry.entryName)) {
           await markProcessAsFailed(process_id, 'is_unsupported_file_name', `The uploaded file '${entry.entryName}' is not a valid file name.`);
           return false;
         }
 
-        const validCSV = await validateCSVFormat(process_id, folderPath, entry, fileName);
+        const validCSV = await validateCSVFormat(process_id, folderPath, entry, fileName, mediaContent);
         if (!validCSV) return false;
       }
-
-      // Check if the media folder exists
-      if (!mediaFolderExists) {
-        await markProcessAsFailed(process_id, 'is_media_folder_missing', 'The uploaded ZIP file does not contain a "media" folder.');
-        return false;
-      }
     }
-
     return true;
   } catch (error) {
     const code = _.get(error, 'code', 'UPLOAD_QUESTION_CRON');
@@ -107,7 +106,7 @@ const validateZipFiles = async (process_id: string, s3Objects: any, folderPath: 
   }
 };
 
-const validateCSVFormat = async (process_id: string, folderPath: string, entry: any, fileName: string): Promise<boolean> => {
+const validateCSVFormat = async (process_id: string, folderPath: string, entry: any, fileName: string, mediaContent: string[]): Promise<boolean> => {
   const transaction: Transaction = await AppDataSource.transaction();
   try {
     const templateZipEntries = await fetchAndExtractZipEntries('template', folderPath, fileName);
@@ -129,6 +128,12 @@ const validateCSVFormat = async (process_id: string, folderPath: string, entry: 
       .map((row: string) => row.split(','))
       .filter((row: string[]) => row.some((cell) => cell.trim() !== '')); // Filter out rows where all cells are empty
 
+    const mediaColumns = header.filter((col: string) => col.includes('media')); // Assuming media-related columns contain "media"
+
+    if (mediaColumns.length === 0) {
+      await markProcessAsFailed(process_id, 'media_columns_missing', `The file '${entry.entryName}' does not contain media-related columns.`);
+      return false;
+    }
     // Validate header length and column names
     if (header.length !== templateHeader.length) {
       await markProcessAsFailed(process_id, 'invalid_header_length', `CSV file contains more/less fields compared to the template.`);
@@ -149,6 +154,14 @@ const validateCSVFormat = async (process_id: string, folderPath: string, entry: 
         {} as Record<string, string>,
       );
 
+      for (const mediaCol of mediaColumns) {
+        const mediaFileName = rowData[mediaCol];
+
+        if (mediaFileName && !mediaContent.includes(mediaFileName)) {
+          await markProcessAsFailed(process_id, 'media_file_missing', `Media file '${mediaFileName}' mentioned in column '${mediaCol}' at row ${rowIndex + 1} is missing in the ZIP file.`);
+          return false;
+        }
+      }
       const { hint, description, QID: question_id, ...rest } = rowData;
       const bodyFields = Object.fromEntries(Object.entries(rest).filter(([key]) => key.startsWith('n') || key.includes('grid') || key.includes('fib') || key.includes('mcq')));
 
@@ -250,7 +263,7 @@ const fetchAndExtractZipEntries = async (folderName: string, folderPath: string,
     if (folderName === 'upload') {
       s3File = await getQuestionSignedUrl(folderPath, fileName, 10);
     } else {
-      s3File = await getTemplateSignedUrl(folderName, fileName, 10);
+      s3File = await getTemplateSignedUrl(folderName, 'question.zip', 10);
     }
     if (!s3File.url) {
       throw new Error('Signed URL is missing or invalid');
