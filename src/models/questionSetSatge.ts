@@ -1,8 +1,8 @@
 import { DataTypes } from 'sequelize';
 import { AppDataSource } from '../config';
 
-export const StageTable = AppDataSource.define(
-  'stage_table',
+export const QuestionSetStage = AppDataSource.define(
+  'question_set_stage',
   {
     id: {
       type: DataTypes.INTEGER,
@@ -13,19 +13,15 @@ export const StageTable = AppDataSource.define(
       type: DataTypes.UUID,
       allowNull: false,
     },
-    question_id: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     question_set_id: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    sequence: {
+    title: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    question_type: {
+    description: {
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -46,75 +42,43 @@ export const StageTable = AppDataSource.define(
       allowNull: true,
     },
     L2_skill: {
-      type: DataTypes.STRING,
+      type: DataTypes.ARRAY(DataTypes.STRING),
       allowNull: true,
     },
     L3_skill: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    sequence: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    sub_skills: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    purpose: {
       type: DataTypes.STRING,
+      allowNull: true,
+    },
+    is_atomic: {
+      type: DataTypes.BOOLEAN,
       allowNull: true,
     },
     gradient: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    hint: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    description: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    body: {
-      type: DataTypes.JSONB,
-      allowNull: true,
-    },
-    benchmark_time: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    sub_skill: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    sub_skill_carry: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    sub_skill_procedural: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    sub_skill_x0: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    sub_skill_xx: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    media_file_1: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    media_file_2: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    media_file_3: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    media_file_4: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    media_file_5: {
+    group_name: {
       type: DataTypes.STRING,
       allowNull: true,
     },
     status: {
       type: DataTypes.ENUM('progres', 'errored', 'successed'),
+      allowNull: true,
+    },
+    media: {
+      type: DataTypes.JSONB,
       allowNull: true,
     },
     error_info: {
@@ -123,7 +87,7 @@ export const StageTable = AppDataSource.define(
     },
   },
   {
-    tableName: 'stage_table',
+    tableName: 'question_set_stage',
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',

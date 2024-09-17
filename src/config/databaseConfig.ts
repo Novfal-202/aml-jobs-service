@@ -14,6 +14,13 @@ const AppDataSource = new Sequelize({
   password: password,
   database: name,
   models: [__dirname + '/models/*.ts'],
+  logging: true, // Customize logging
+  pool: {
+    max: 300, // Increase this value if you expect high traffic
+    min: 0,
+    acquire: 700000, // 30 seconds
+    idle: 50000,
+  },
 });
 
 export const query = async (query: string) => {

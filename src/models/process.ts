@@ -21,8 +21,12 @@ export const Process = AppDataSource.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    error_fileName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     status: {
-      type: DataTypes.ENUM('open', 'in_progres', 'is_completed', 'is_failed'),
+      type: DataTypes.ENUM('open', 'progress', 'completed', 'is_failed'),
       allowNull: false,
     },
     error_status: {

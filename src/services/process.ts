@@ -4,13 +4,11 @@ import { Optional } from 'sequelize';
 
 //create service for Process
 export const createProcess = async (req: Optional<any, string>): Promise<any> => {
-  const transact = await AppDataSource.transaction();
   try {
-    await Process.create(req, { transaction: transact });
-    await transact.commit();
+    await Process.create(req);
+
     return { error: false, message: 'success' };
   } catch (error) {
-    await transact.rollback();
     const err = error instanceof Error;
     const errorMsg = err ? error.message || 'failed to create a record' : '';
     return { error: true, message: errorMsg };
@@ -33,11 +31,10 @@ export const getProcessByMetaData = async (req: any): Promise<any> => {
 //update single Process
 export const updateProcess = async (process_id: string, req: any): Promise<any> => {
   try {
-    const transact = await AppDataSource.transaction();
     const whereClause: Record<string, any> = { process_id };
     whereClause.is_active = true;
-    const updateProcess = await Process.update(req, { where: whereClause, transaction: transact });
-    await transact.commit();
+    const updateProcess = await Process.update(req, { where: whereClause });
+
     return { error: false, updateProcess };
   } catch (error) {
     const err = error instanceof Error;

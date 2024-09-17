@@ -1,20 +1,24 @@
 import { DataTypes } from 'sequelize';
 import { AppDataSource } from '../config';
 
-export const StageTable = AppDataSource.define(
-  'tem_table',
+export const QuestionStage = AppDataSource.define(
+  'question_stage',
   {
     id: {
-      type: DataTypes.UUID,
+      type: DataTypes.INTEGER,
       primaryKey: true,
-      allowNull: false,
+      autoIncrement: true,
     },
     process_id: {
       type: DataTypes.UUID,
+      allowNull: false,
+    },
+    question_text: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
     question_id: {
-      type: DataTypes.UUID,
+      type: DataTypes.STRING,
       allowNull: true,
     },
     question_set_id: {
@@ -22,11 +26,11 @@ export const StageTable = AppDataSource.define(
       allowNull: true,
     },
     sequence: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: true,
     },
     question_type: {
-      type: DataTypes.ENUM('grid1', 'grid2', 'mcq', 'fib'),
+      type: DataTypes.STRING,
       allowNull: true,
     },
     repository_name: {
@@ -69,9 +73,45 @@ export const StageTable = AppDataSource.define(
       type: DataTypes.JSONB,
       allowNull: true,
     },
+    benchmark_time: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    sub_skill: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    sub_skill_carry: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    sub_skill_procedural: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    sub_skill_x0: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    sub_skill_xx: {
+      type: DataTypes.ARRAY(DataTypes.STRING),
+      allowNull: true,
+    },
+    media: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    },
+    status: {
+      type: DataTypes.ENUM('progres', 'errored', 'successed'),
+      allowNull: true,
+    },
+    error_info: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
   },
   {
-    tableName: 'stage_table',
+    tableName: 'question_stage',
     timestamps: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',

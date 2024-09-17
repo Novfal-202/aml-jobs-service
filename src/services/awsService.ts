@@ -44,15 +44,15 @@ export const uploadTemplateSignedUrl = async (folderName: string, fileName: stri
   }
 };
 
-export const uploadSignedUrl = async (folderName: string, process_id: string, fileName: string, expiry: number) => {
+export const uploadSignedUrl = async (fileName: string) => {
   try {
     const command = new PutObjectCommand({
       Bucket: bucketName,
-      Key: `${folderName}/${process_id}/${fileName}`,
+      Key: fileName,
     });
 
     const url = await getSignedUrl(s3Client, command, {
-      expiresIn: 60 * expiry || 300,
+      expiresIn: 60 * 300,
     });
 
     return { error: false, fileName, url, message: 'success' };
@@ -95,6 +95,25 @@ export const getAllCloudFolder = async (folderPath: string) => {
   } catch (error) {
     const err = error instanceof Error;
     const errorMsg = err ? error.message || 'failed to get all folder' : '';
+    return { error: true, message: errorMsg };
+  }
+};
+
+export const uploadmedia = async (fileName: string) => {
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: fileName,
+    });
+
+    const url = await getSignedUrl(s3Client, command, {
+      expiresIn: 60 * 300,
+    });
+
+    return { error: false, fileName, url, message: 'success' };
+  } catch (error) {
+    const err = error instanceof Error;
+    const errorMsg = err ? error.message || 'failed to generate URLs for upload' : '';
     return { error: true, message: errorMsg };
   }
 };

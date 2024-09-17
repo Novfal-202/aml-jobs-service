@@ -42,8 +42,6 @@ const initializeServer = async (): Promise<void> => {
     // Middleware to enable CORS
     app.use(cors());
 
-    scheduleCronJob();
-
     // Enable CORS preflight for all routes
     app.options('*', cors());
 
@@ -61,6 +59,8 @@ const initializeServer = async (): Promise<void> => {
     app.listen(envPort, () => {
       logger.info(`Port served.`);
     });
+
+    scheduleCronJob();
 
     // Handle uncaught exceptions and unhandled rejections
     process.on('uncaughtException', unexpectedErrorHandler);
