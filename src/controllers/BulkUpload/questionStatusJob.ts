@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import logger from '../../utils/logger';
 import * as _ from 'lodash';
-import { getFolderMetaData, getFolderData } from '../../services/awsService';
+import { getFolderMetaData, getFolderData, uploadFile } from '../../services/awsService';
 import { getProcessByMetaData, updateProcess } from '../../services/process';
 import path from 'path';
 import AdmZip from 'adm-zip';
@@ -17,11 +16,12 @@ export const scheduleJob = async () => {
   try {
     for (const process of getAllProcess) {
       const { process_id, fileName } = process;
+      logger.info(`Starting bulk upload job for process id :${process_id}.`);
       FILENAME = fileName;
       Process_id = process_id;
       const folderPath = `upload/${process_id}`;
       const bulkUploadMetadata = await getFolderMetaData(folderPath);
-      logger.info('Starting bulk upload folder validation.');
+      logger.info(`Starting bulk upload folder validation for process id :${process_id}.`);
       await validateZipFile(bulkUploadMetadata);
     }
   } catch (error) {
@@ -158,6 +158,8 @@ const validateQuestionCsv = async (questionEntry: any, mediaEntries: any) => {
     if (!isValidHeader) return;
     const processData = processRow(rows, header);
     logger.info('header and row process successfully as object');
+    const updatedProcessData = await validMedia(processData, mediaEntries, 'question');
+    logger.info('media inserted and updated in the process Data', updatedProcessData);
     return;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
@@ -177,7 +179,7 @@ const validateQuestionSetCsv = async (questionSetEntry: any) => {
     const isValidHeader = await validHeader(questionSetEntry.entryName, header, templateHeader);
     if (!isValidHeader) return;
     const processData = processRow(rows, header);
-    logger.info('header and row process successfully as object');
+    logger.info('header and row process successfully as object', processData);
     return;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
@@ -197,7 +199,9 @@ const validateContentCsv = async (contentEntry: any, mediaEntries: any) => {
     const isValidHeader = await validHeader(contentEntry.entryName, header, templateHeader);
     if (!isValidHeader) return;
     const processData = processRow(rows, header);
-    logger.info('header and row process successfully as object');
+    logger.info('header and row process successfully as objects');
+    const updatedProcessData = await validMedia(processData, mediaEntries, 'content');
+    logger.info('media inserted and updated in the process Data', updatedProcessData);
     return;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Error during upload validation,please re upload the zip file for the new process';
@@ -208,6 +212,28 @@ const validateContentCsv = async (contentEntry: any, mediaEntries: any) => {
       status: 'errored',
     });
   }
+};
+
+const validMedia = async (processedCSVData: any, mediaEntries: any[], type: string) => {
+  const mediaCsvData = await Promise.all(
+    processedCSVData.map(async (p: any) => {
+      const mediaFiles = await Promise.all(
+        p.media_files.map(async (o: string) => {
+          const foundMedia = mediaEntries.slice(1).find((media: any) => {
+            return media.entryName.split('/')[1] === o;
+          });
+          if (foundMedia) {
+            const mediaData = await uploadFile(foundMedia, type);
+            return mediaData;
+          }
+          return null;
+        }),
+      );
+      p.media_files = mediaFiles.filter((media: any) => media !== null);
+      return p;
+    }),
+  );
+  return mediaCsvData;
 };
 
 const processRow = (rows: string[][], header: string[]) => {
